@@ -7,29 +7,10 @@ echo "================================="
 apt update
 apt install -y ipset iptables-persistent wget curl netcat-openbsd
 
-# Ask for flush at start
-read -rp "Flush ALL existing firewall rules? (y/N): " FLUSH < /dev/tty
-FLUSH=${FLUSH,,}
-
-if [[ "$FLUSH" == "y" ]]; then
-    echo "[*] Flushing firewall rules in background..."
-    (iptables -F
-     iptables -X
-     iptables -t nat -F
-     iptables -t nat -X
-     iptables -t mangle -F
-     iptables -t mangle -X
-     ipset destroy blocked_countries 2>/dev/null || true) &
-    PID=$!
-    echo "[*] Flush running, PID: $PID ..."
-    wait $PID
-    echo "[*] Flush completed!"
-fi
-
-# Force terminal input for curl|bash
+# Force terminal input (works with curl | bash)
 exec < /dev/tty
 
-# Ask user for ports and countries
+# Input
 read -rp "Enter ports to protect (e.g. 2053,8443): " PORTS
 read -rp "Enter countries to block (e.g. ru,pk,iq): " COUNTRIES
 
@@ -37,7 +18,7 @@ read -rp "Enter countries to block (e.g. ru,pk,iq): " COUNTRIES
 PORTS=$(echo "$PORTS" | tr -d '[:space:]')
 COUNTRIES=$(echo "$COUNTRIES" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 
-# Prepare ipset
+# Create ipset
 ipset create blocked_countries hash:net -exist
 ipset flush blocked_countries
 
@@ -46,19 +27,21 @@ echo "[*] Loading GeoIP data..."
 for c in $(echo "$COUNTRIES" | tr ',' ' '); do
     echo "---------------------------------"
     echo "[*] Downloading country: $c"
+
     curl -sSL "https://www.ipdeny.com/ipblocks/data/countries/${c}.zone" | while read -r net; do
         ipset add blocked_countries "$net" -exist
     done
+
     echo "[*] Done: $c"
 done
 
-# Apply iptables rules
+echo "[*] Applying firewall rules..."
+
 for p in $(echo "$PORTS" | tr ',' ' '); do
     iptables -C INPUT -p tcp --dport "$p" -m set --match-set blocked_countries src -j DROP 2>/dev/null \
     || iptables -I INPUT -p tcp --dport "$p" -m set --match-set blocked_countries src -j DROP
 done
 
-# Save rules for persistence
 netfilter-persistent save >/dev/null 2>&1
 
 echo "================================="
