@@ -1,27 +1,11 @@
-# 🌍 GeoIP Firewall Guard (iptables + ipset)
+# GeoIP Firewall Guard
 
-A universal firewall tool that blocks traffic from selected countries using GeoIP lists.
+**Universal firewall script for Linux servers using iptables & ipset**  
+Blocks traffic from specified countries on specified ports. Idempotent — safe to re-run.
 
-Works for:
-- Telegram MTProxy / TeleMT
-- SSH / VPS protection
-- Web servers (Nginx/Apache)
-- Any TCP service
+## Usage
 
----
-
-## ⚙️ Features
-
-- Country-based IP blocking (RU, PK, IQ, etc.)
-- Multi-port protection
-- Uses ipset (high performance)
-- iptables integration
-- Persistent across reboot
-- Safe to re-run (no duplicates)
-
----
-
-## 🚀 Quick Install (One Command)
+Run directly from GitHub:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/TradeIP-telegram/geoip-firewall-guard/main/geoip-firewall-guard.sh | bash
