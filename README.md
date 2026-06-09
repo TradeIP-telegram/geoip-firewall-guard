@@ -9,15 +9,13 @@ A universal firewall tool using iptables + ipset to block traffic from selected 
 - Block multiple countries (RU, PK, IQ, etc.)
 - Protect multiple TCP ports
 - Optional full firewall reset at start
-- Fully interactive (works with curl | bash)
-- Safe re-run (avoids duplicate rules)
+- Safe re-run (no duplicate rules)
 - Works with MTProxy, SSH, web servers, etc.
+- Rules persist across reboot (via netfilter-persistent)
 
 ---
 
-## Usage (recommended)
-
-Run directly:
+## One-line install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/TradeIP-telegram/geoip-firewall-guard/main/geoip-firewall-guard.sh | bash
