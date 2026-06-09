@@ -7,9 +7,10 @@ echo "================================="
 apt update
 apt install -y ipset iptables-persistent wget curl
 
-# Ask for flush at start
-read -rp "Do you want to flush previous iptables/ipset rules? (y/N): " FLUSH
+# Ask for flush at start (works in curl|bash too)
+read -rp "Do you want to flush previous iptables/ipset rules? (y/N): " FLUSH < /dev/tty
 FLUSH=${FLUSH,,}
+
 if [[ "$FLUSH" == "y" ]]; then
     echo "[*] Flushing iptables and ipset rules..."
     iptables -F
@@ -21,17 +22,11 @@ if [[ "$FLUSH" == "y" ]]; then
     ipset destroy blocked_countries 2>/dev/null || true
 fi
 
-# Use proper terminal input
-if [ -t 0 ]; then
-    # stdin is terminal
-    read -rp "Enter ports to protect (example: 2053,8443): " PORTS
-    read -rp "Enter countries to block (example: ru,pk,iq): " COUNTRIES
-else
-    # fallback if running via curl|bash
-    echo "[*] No terminal detected, using default ports and countries."
-    PORTS="2053,8443"
-    COUNTRIES="ru,pk,iq"
-fi
+# Force real terminal input (IMPORTANT for curl|bash)
+exec < /dev/tty
+
+read -rp "Enter ports to protect (example: 2053,8443): " PORTS
+read -rp "Enter countries to block (example: ru,pk,iq): " COUNTRIES
 
 # Clean input
 PORTS=$(echo "$PORTS" | tr -d '[:space:]')
