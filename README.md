@@ -8,14 +8,15 @@ A universal firewall tool using iptables + ipset to block traffic from selected 
 
 - Block multiple countries (RU, PK, IQ, etc.)
 - Protect multiple TCP ports
-- Optional full firewall reset at start
+- Safe to run via `curl | bash` (non-interactive dependency install)
 - Safe re-run (no duplicate rules)
 - Works with MTProxy, SSH, web servers, etc.
-- Real-time progress feedback when downloading GeoIP data
 
 ---
 
-## One-line install
+## Usage
+
+### One-liner install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/TradeIP-telegram/geoip-firewall-guard/main/geoip-firewall-guard.sh | bash
