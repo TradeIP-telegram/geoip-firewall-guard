@@ -4,28 +4,30 @@ echo "================================="
 echo " GeoIP Firewall Guard"
 echo "================================="
 
-# Force noninteractive installs (IMPORTANT FIX)
 export DEBIAN_FRONTEND=noninteractive
 
-# Dependencies (no prompts ever)
 apt update -y
 apt install -y ipset iptables-persistent wget curl netcat-openbsd
 
-# Detect terminal safely
-if [ -t 0 ]; then
-    read -rp "Enter ports to protect (e.g. 2053,8443): " PORTS
-    read -rp "Enter countries to block (e.g. ru,pk,iq): " COUNTRIES
+# FORCE real terminal input (this is the key fix)
+if [ -e /dev/tty ]; then
+    exec < /dev/tty
 else
-    echo "[*] No terminal detected, using defaults..."
+    echo "[!] No terminal detected, using defaults"
     PORTS="2053,8443"
     COUNTRIES="ru,pk,iq"
+fi
+
+# If tty exists → always ask (even in curl|bash)
+if [ -e /dev/tty ]; then
+    read -rp "Enter ports to protect (e.g. 2053,8443): " PORTS
+    read -rp "Enter countries to block (e.g. ru,pk,iq): " COUNTRIES
 fi
 
 # Clean input
 PORTS=$(echo "$PORTS" | tr -d '[:space:]')
 COUNTRIES=$(echo "$COUNTRIES" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 
-# Setup ipset
 ipset create blocked_countries hash:net -exist
 ipset flush blocked_countries
 
