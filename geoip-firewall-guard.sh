@@ -7,12 +7,17 @@ echo "================================="
 apt update
 apt install -y ipset iptables-persistent wget curl netcat-openbsd
 
-# Force terminal input (works with curl | bash)
-exec < /dev/tty
-
-# Ask user for ports and countries
-read -rp "Enter ports to protect (e.g. 2053,8443): " PORTS
-read -rp "Enter countries to block (e.g. ru,pk,iq): " COUNTRIES
+# Detect if running in terminal
+if [ -t 0 ]; then
+    # stdin is terminal, ask user
+    read -rp "Enter ports to protect (e.g. 2053,8443): " PORTS
+    read -rp "Enter countries to block (e.g. ru,pk,iq): " COUNTRIES
+else
+    # No terminal, use defaults
+    echo "[*] No terminal detected, using default ports and countries."
+    PORTS="2053,8443"
+    COUNTRIES="ru,pk,iq"
+fi
 
 # Clean input
 PORTS=$(echo "$PORTS" | tr -d '[:space:]')
@@ -23,7 +28,6 @@ ipset create blocked_countries hash:net -exist
 ipset flush blocked_countries
 
 echo "[*] Loading GeoIP data..."
-
 for c in $(echo "$COUNTRIES" | tr ',' ' '); do
     echo "---------------------------------"
     echo "[*] Downloading country: $c"
