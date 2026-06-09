@@ -1,95 +1,36 @@
 #!/bin/bash
-
-set -e
-
 echo "================================="
 echo " GeoIP Firewall Guard"
 echo "================================="
-echo
 
-read -rp "Enter ports to protect (example: 2053,8443): " PORTS
-read -rp "Enter countries to block (example: ru,pk,iq): " COUNTRIES
+# Dependencies
+apt update
+apt install -y ipset iptables-persistent wget curl
 
-IFS=',' read -ra PORT_ARRAY <<< "$PORTS"
-IFS=',' read -ra COUNTRY_ARRAY <<< "$COUNTRIES"
+# Interactive input from terminal
+read -rp "Enter ports to protect (example: 2053,8443): " PORTS < /dev/tty
+read -rp "Enter countries to block (example: ru,pk,iq): " COUNTRIES < /dev/tty
 
-echo
-echo "[*] Installing dependencies..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y ipset iptables-persistent wget curl
+# Clean whitespace
+PORTS=$(echo "$PORTS" | tr -d '[:space:]')
+COUNTRIES=$(echo "$COUNTRIES" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 
-echo
-echo "[*] Preparing ipset..."
-
-if ipset list blocked_countries >/dev/null 2>&1; then
+# Prepare ipset
+ipset create blocked_countries hash:net -exist
 ipset flush blocked_countries
-else
-ipset create blocked_countries hash:net
-fi
 
-echo
-echo "[*] Configuring firewall rules..."
-
-for PORT in "${PORT_ARRAY[@]}"; do
-PORT=$(echo "$PORT" | xargs)
-
-```
-if ! iptables -C INPUT -p tcp --dport "$PORT" -m set --match-set blocked_countries src -j DROP 2>/dev/null; then
-    iptables -I INPUT -p tcp --dport "$PORT" -m set --match-set blocked_countries src -j DROP
-    echo "  Added protection for port $PORT"
-else
-    echo "  Port $PORT already protected"
-fi
-```
-
+# Download country IPs and add to ipset
+for c in $(echo "$COUNTRIES" | tr ',' ' '); do
+    wget -qO- "https://www.ipdeny.com/ipblocks/data/countries/${c}.zone" | while read net; do
+        ipset add blocked_countries "$net" -exist
+    done
 done
 
-mkdir -p /etc/ipset
-
-echo
-echo "[*] Downloading GeoIP lists..."
-
-for COUNTRY in "${COUNTRY_ARRAY[@]}"; do
-
-```
-COUNTRY=$(echo "$COUNTRY" | tr '[:upper:]' '[:lower:]' | xargs)
-
-echo "  Loading $COUNTRY..."
-
-URL="https://www.ipdeny.com/ipblocks/data/countries/${COUNTRY}.zone"
-FILE="/etc/ipset/${COUNTRY}.zone"
-
-if ! wget -q -O "$FILE" "$URL"; then
-    echo "  Failed to download $COUNTRY"
-    continue
-fi
-
-while IFS= read -r NET; do
-    [ -z "$NET" ] && continue
-    ipset add blocked_countries "$NET" -exist
-done < "$FILE"
-```
-
+# Add iptables rules
+for p in $(echo "$PORTS" | tr ',' ' '); do
+    iptables -I INPUT -p tcp --dport "$p" -m set --match-set blocked_countries src -j DROP
 done
 
-echo
-echo "[*] Saving configuration..."
-
-mkdir -p /etc/ipset
-
-ipset save blocked_countries > /etc/ipset/blocked_countries.save
-
-iptables-save > /etc/iptables/rules.v4
-
-echo
-echo "================================="
-echo " Setup Complete"
-echo "================================="
+echo "Firewall updated successfully!"
 echo "Blocked countries: $COUNTRIES"
-echo "Protected ports : $PORTS"
-echo
-echo "Verify:"
-echo "  ipset list blocked_countries"
-echo "  iptables -L INPUT -n --line-numbers"
-echo
+echo "Protected ports: $PORTS"
