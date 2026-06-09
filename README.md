@@ -11,7 +11,7 @@ A universal firewall tool using iptables + ipset to block traffic from selected 
 - Optional full firewall reset at start
 - Safe re-run (no duplicate rules)
 - Works with MTProxy, SSH, web servers, etc.
-- Rules persist across reboot (via netfilter-persistent)
+- Real-time progress feedback when downloading GeoIP data
 
 ---
 

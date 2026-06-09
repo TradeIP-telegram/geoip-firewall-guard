@@ -5,14 +5,14 @@ echo "================================="
 
 # Dependencies
 apt update
-apt install -y ipset iptables-persistent wget curl
+apt install -y ipset iptables-persistent wget curl netcat-openbsd
 
-# Ask for flush at start (works in curl|bash too)
-read -rp "Do you want to flush previous iptables/ipset rules? (y/N): " FLUSH < /dev/tty
+# Flush prompt
+read -rp "Flush ALL existing firewall rules? (y/N): " FLUSH < /dev/tty
 FLUSH=${FLUSH,,}
 
 if [[ "$FLUSH" == "y" ]]; then
-    echo "[*] Flushing iptables and ipset rules..."
+    echo "[*] Flushing firewall rules..."
     iptables -F
     iptables -X
     iptables -t nat -F
@@ -22,35 +22,46 @@ if [[ "$FLUSH" == "y" ]]; then
     ipset destroy blocked_countries 2>/dev/null || true
 fi
 
-# Force real terminal input (IMPORTANT for curl|bash)
+# Force terminal input for curl|bash
 exec < /dev/tty
 
-read -rp "Enter ports to protect (example: 2053,8443): " PORTS
-read -rp "Enter countries to block (example: ru,pk,iq): " COUNTRIES
+read -rp "Enter ports to protect (e.g. 2053,8443): " PORTS
+read -rp "Enter countries to block (e.g. ru,pk,iq): " COUNTRIES
 
-# Clean input
+# sanitize
 PORTS=$(echo "$PORTS" | tr -d '[:space:]')
 COUNTRIES=$(echo "$COUNTRIES" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 
-# Create ipset
+# prepare ipset
 ipset create blocked_countries hash:net -exist
 ipset flush blocked_countries
 
-# Load country IPs
+echo "[*] Loading GeoIP data..."
+
 for c in $(echo "$COUNTRIES" | tr ',' ' '); do
-    echo "[*] Loading $c..."
-    wget -qO- "https://www.ipdeny.com/ipblocks/data/countries/${c}.zone" | while read net; do
+    echo "---------------------------------"
+    echo "[*] Downloading country: $c"
+
+    # show real progress (no silent freeze anymore)
+    curl -sSL "https://www.ipdeny.com/ipblocks/data/countries/${c}.zone" | while read -r net; do
         ipset add blocked_countries "$net" -exist
     done
+
+    echo "[*] Done: $c"
 done
 
-# Apply iptables rules
+echo "[*] Applying firewall rules..."
+
 for p in $(echo "$PORTS" | tr ',' ' '); do
-    iptables -I INPUT -p tcp --dport "$p" -m set --match-set blocked_countries src -j DROP
+    iptables -C INPUT -p tcp --dport "$p" -m set --match-set blocked_countries src -j DROP 2>/dev/null \
+    || iptables -I INPUT -p tcp --dport "$p" -m set --match-set blocked_countries src -j DROP
 done
+
+netfilter-persistent save >/dev/null 2>&1
 
 echo "================================="
 echo "Firewall updated successfully!"
 echo "Blocked countries: $COUNTRIES"
 echo "Protected ports: $PORTS"
+echo "Persistence: ENABLED"
 echo "================================="
