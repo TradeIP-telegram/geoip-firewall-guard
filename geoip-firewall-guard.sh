@@ -1,59 +1,95 @@
 #!/bin/bash
-# =========================================
-# GeoIP Firewall Guard (iptables + ipset)
-# Universal production-grade firewall
-# =========================================
 
 set -e
 
-echo "==== GeoIP Firewall Guard ===="
+echo "================================="
+echo " GeoIP Firewall Guard"
+echo "================================="
+echo
 
-# -------- CONFIG --------
-read -p "Enter ports to protect (comma-separated, e.g. 2053,8443): " PORTS
-read -p "Enter countries to block (comma-separated, e.g. ru,pk,iq): " COUNTRIES
+read -rp "Enter ports to protect (example: 2053,8443): " PORTS
+read -rp "Enter countries to block (example: ru,pk,iq): " COUNTRIES
 
-IFS=',' read -r -a PORT_ARRAY <<< "$PORTS"
-IFS=',' read -r -a COUNTRY_ARRAY <<< "$COUNTRIES"
+IFS=',' read -ra PORT_ARRAY <<< "$PORTS"
+IFS=',' read -ra COUNTRY_ARRAY <<< "$COUNTRIES"
 
-# -------- INSTALL DEPENDENCIES --------
+echo
 echo "[*] Installing dependencies..."
-apt update
-apt install -y ipset iptables-persistent wget curl
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ipset iptables-persistent wget curl
 
-# -------- CLEAN EXISTING SET (NO DUPLICATES) --------
-echo "[*] Resetting ipset..."
-ipset destroy blocked_countries 2>/dev/null || true
+echo
+echo "[*] Preparing ipset..."
+
+if ipset list blocked_countries >/dev/null 2>&1; then
+ipset flush blocked_countries
+else
 ipset create blocked_countries hash:net
+fi
 
-# -------- IPSET RULES --------
-echo "[*] Adding iptables rules..."
+echo
+echo "[*] Configuring firewall rules..."
+
 for PORT in "${PORT_ARRAY[@]}"; do
-    iptables -C INPUT -p tcp --dport "$PORT" -m set --match-set blocked_countries src -j DROP 2>/dev/null \
-    || iptables -I INPUT -p tcp --dport "$PORT" -m set --match-set blocked_countries src -j DROP
+PORT=$(echo "$PORT" | xargs)
+
+```
+if ! iptables -C INPUT -p tcp --dport "$PORT" -m set --match-set blocked_countries src -j DROP 2>/dev/null; then
+    iptables -I INPUT -p tcp --dport "$PORT" -m set --match-set blocked_countries src -j DROP
+    echo "  Added protection for port $PORT"
+else
+    echo "  Port $PORT already protected"
+fi
+```
+
 done
 
-# -------- DOWNLOAD + LOAD COUNTRIES --------
-echo "[*] Loading GeoIP data..."
 mkdir -p /etc/ipset
 
-for CODE in "${COUNTRY_ARRAY[@]}"; do
-    FILE="/etc/ipset/${CODE}.zone"
+echo
+echo "[*] Downloading GeoIP lists..."
 
-    echo "  -> $CODE"
-    wget -q -O "$FILE" "https://www.ipdeny.com/ipblocks/data/countries/${CODE}.zone"
+for COUNTRY in "${COUNTRY_ARRAY[@]}"; do
 
-    # Add IPs safely (no duplicates because ipset is clean each run)
-    while read -r IP; do
-        ipset add blocked_countries "$IP" 2>/dev/null || true
-    done < "$FILE"
+```
+COUNTRY=$(echo "$COUNTRY" | tr '[:upper:]' '[:lower:]' | xargs)
+
+echo "  Loading $COUNTRY..."
+
+URL="https://www.ipdeny.com/ipblocks/data/countries/${COUNTRY}.zone"
+FILE="/etc/ipset/${COUNTRY}.zone"
+
+if ! wget -q -O "$FILE" "$URL"; then
+    echo "  Failed to download $COUNTRY"
+    continue
+fi
+
+while IFS= read -r NET; do
+    [ -z "$NET" ] && continue
+    ipset add blocked_countries "$NET" -exist
+done < "$FILE"
+```
+
 done
 
-# -------- SAVE PERSISTENT --------
+echo
 echo "[*] Saving configuration..."
-ipset save > /etc/ipset/blocked_countries.save
-netfilter-persistent save
 
-echo "[+] DONE"
-echo "[+] Ports protected: $PORTS"
-echo "[+] Countries blocked: $COUNTRIES"
-echo "[+] Universal firewall active (not TeleMT-specific)"
+mkdir -p /etc/ipset
+
+ipset save blocked_countries > /etc/ipset/blocked_countries.save
+
+iptables-save > /etc/iptables/rules.v4
+
+echo
+echo "================================="
+echo " Setup Complete"
+echo "================================="
+echo "Blocked countries: $COUNTRIES"
+echo "Protected ports : $PORTS"
+echo
+echo "Verify:"
+echo "  ipset list blocked_countries"
+echo "  iptables -L INPUT -n --line-numbers"
+echo
